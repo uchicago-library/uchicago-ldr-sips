@@ -9,8 +9,6 @@ __description__ = "This program takes a random selection of files from the ldr d
 
 from sys import argv, path
 
-path.insert(0, "/home/tdanstrom/src/apps/processor")
-
 from argparse import Action, ArgumentParser
 from configobj import ConfigObj
 from datetime import datetime, timedelta
@@ -25,8 +23,8 @@ from re import compile as re_compile, split as re_split
 from sqlalchemy import Table
 
 from uchicagoldr.batch import Batch
-from uchicagoldr.LDRFileTree import Data
 from uchicagoldr.database import Database
+from uchicagoldrsips.LDRFileTree import Data
 
 def getTree(generator_data):
     d = Data(generator_data)
@@ -106,12 +104,17 @@ def main():
                          const='./{progname}.log'. \
                          format(progname=argv[0]) \
     )
-    parser.add_argument("--directory_path", 
-                        help="Enter a directory that you need to work on ",
+    parser.add_argument("-o","--object_level",
+                        help="Enter the level at which object starts",
+                        type=int,
                         action='store')
-    parser.add_argument("root",
+    parser.add_argument("-r", "--root",
                        help="Enter the root of the directory path",
                         action="store")
+    parser.add_argument("directory_path", 
+                        help="Enter a directory that you need to work on ",
+                        action='store')
+
     parser.add_argument('pattern', help="Enter a pattern to filter files with",
                         action="store")
     global args
@@ -141,8 +144,10 @@ def main():
     sixty_days_ago_date = current_date - timedelta(days=60)
     isof_sixty_days_ago_date = sixty_days_ago_date.strftime( \
                             "%Y-%m-%dT%H:%M:%S")
-    db = Database("sqlite:////media/repository/repository/databases/official/repositoryAccessions.db.new",
-                  tables_to_bind=['record'])
+    db = Database("sqlite:////media/repo/repository/databases/" +  
+                  "official/repositoryAccessions.db.new",tables_to_bind= \
+                  ['record'])
+                  
 
     class Record(db.base):
         __table__ = Table('record', db.metadata, autoload=True)
@@ -153,14 +158,25 @@ def main():
     query = db.session.query(Record.createdate).filter(Record.receipt == \
                                                        difference_in_path) 
     createdate = query.first()[0]
-    items = b.find_items(from_directory = True, filterable = re_compile(args.pattern))
+    items = b.find_items(from_directory = True, 
+                         filterable = re_compile(args.pattern))
     b.set_items(items)
     try:
-         generated_data = evaluate_items(b,createdate)
-         # tree = getTree(generated_data)
-         for n in generated_data:
-             print(n.filepath)
-         return 0
+        generated_data = evaluate_items(b,createdate)
+        count = 0
+        objects = {}
+        for n in generated_data:
+            id_parts = args.pattern.split('/')
+            id_parts_enumerated = [x for x in range(args.object_level)]
+            id_part_values = [n.canonical_filepath.split('/')[x] \
+                              for x in id_parts_enumerated]
+            identifier = "-".join(id_part_values)
+            try:
+                objects[identifier].append(n)
+            except KeyError:
+                objects[identifier] = [n]
+        print(objects.keys())
+        return 0
     except KeyboardInterrupt:
          logger.error("Program aborted manually")
          return 131

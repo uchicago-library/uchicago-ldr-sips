@@ -26,7 +26,8 @@ class FileObject(object):
 
     def __eq__(self,other):
         if isinstance(other,self.__class__):
-            return self.filepath == other.filepath and self.accession == other.accession and self.date == other.date
+            return self.filepath == other.filepath and self.accession == \
+                other.accession and self.date == other.date
 
     def __gt__(self,other):
         if isinstance(other,self.__class__):
@@ -155,7 +156,8 @@ class Data(object):
         if matches:
             return matches[0].split(' ')
         else:
-            raise ValueError("%s did not have any recognizable single words in the filename" % string)
+            raise ValueError("%s did not have any recognizable single words" + \
+                             " in the filename" % string)
 
     def findSpecificPattern(self, string, pattern):
         from re import compile as re_compile
@@ -232,7 +234,9 @@ class Data(object):
         self.pattern = pattern
         for item in self.iterable:
             filepath = join(item.accession, item.filepath)
-            fileobject = FileObject(item.filepath,item.accession,item.createdate, item.checksum, item.mimetype, item.filesize)
+            fileobject = FileObject(item.filepath, item.accession,
+                                    item.createdate, item.checksum, 
+                                    item.mimetype, item.filesize)
             s = self.normalizePunctuation(filepath)
             try:
                 if not pattern:
@@ -241,5 +245,6 @@ class Data(object):
                     groups = self.findSpecificPattern(s,pattern)
                 self.nestDictionary(groups,fileobject)
             except Exception as e:
-                stderr.write("ERROR\t%s\t%s\n" % (datetime.now().isoformat(),str(e)))
+                stderr.write("ERROR\t%s\t%s\n" % (datetime.now().isoformat(),
+                                                  str(e)))
         return self.tree
