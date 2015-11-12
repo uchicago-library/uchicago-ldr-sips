@@ -1,6 +1,77 @@
 from os.path import basename, join, splitext
 from sys import stdout, stderr
 
+def make_identifier(id_parts, an_object):
+    id_directory = '/'.join(id_parts)
+    id_filename = '-'.join(id_parts)
+    first_page_representation = join(id_directory, "JPEG", id_filename, "_0001.jpg")
+    first_page_representation in an_object.files
+    return namedtuple("identifier", "directory, filename")  \
+        (id_directory, id_filename)
+
+def make_providedcho(identifier, dcfile):
+    subject = identifier.direcotory
+    page_urls = ["dcterms:hasPart <" + identifier.directory + \
+                 identifier.filename + '_' + ('0'*4-len(str(x)))+str(x)+">" \
+                 for x in range(identifier.numpages)]
+    statements = ["dc:coverage \"Chicago\"", 
+                  "dc:date \"{date}\"".format(date = dcfile.date),
+                  "edm:year \"{year}\"".format(year = dcfile.date.split('-')[0]),
+                  "dc:description \"{description}\"".format(dscription = dcfile.description),
+                  "dc:identifier \"{identifier}\"".format(identifier = identifier.filename),
+                  "dc:language \"en\"",
+                  "dc:rights <http://creativecommons.org/licenses/by-nc/4.0/>",
+                  "dc:title \"{title}\"".format(title = dcfile.title),
+                  "dc:type \"text\"",
+                  "edm:type \"TEXT\"",
+                  "dcterms:isPartOf <ead/ICU.SPCL.CAMPUB>",
+
+    ]
+    statements = statements.extend(page_urls)
+    object_type = "edm:ProvidedCHO"
+    return namedtuple("record","subject statements object_type") \
+        (subject, statements, object_type)
+
+def make_aggregation(identifier, pdffile):
+    subject = join('aggregation',identifier.directory)
+    
+    statements = ["edm:aggregatedCHO <{url}>".format(url = identifier.directory), 
+                  "edm:dataProvider \"University of Chicago Library\"",
+                  "edm:isShownAt <http://pi.lib.uchicago.edu/1001/dig/campub/{identifier}".format(identifier = identifier.filename),
+                  "edm:isShownBy <{accession}/{dirhead}/{pdfurl}>".format(accession = pdffile.accession,
+                                                                          dirhead = pdffile.dirhead,
+                                                                          pdfurl = pdffile.canonical_filepath),
+                  "edm:object <{jpegfirstpageurl}>".format(jpegfirstpageurl = jpegfirstpage),
+               ]
+    object_type = "ore:Aggregation"
+    stdout.write("<{url}>\n".format(url = aggregation_url))
+    stdout.write("edm:aggregatedCHO <{providedchourl}>;\n". \
+                 format(providedchourl = providedcho_url))
+    stdout.write("edm:dataProvider \"University of Chicago Library\";\n")
+    stdout.write("edm:isShownAt <http://pi.lib.uchicago.edu/1001/"+
+        "dig/campub/{identifier}>;\n". \
+                 format(identifier = id_filename))
+    stdout.write("edm:isShownBy <{accession}/{dirhead}/{pdf_url}>;\n". \
+                 format(accession = pdffile.accession,
+                        dirhead = pdffile.dirhead,
+                        pdf_url = pdffile.canonical_filepath))
+
+
+    filtered_list = [x for x in jpglist if '_0001.jpg' in x.canonical_filepath]
+    if len(filtered_list) == 0:
+        stderr.write("could not find first page jpeg file in file list\n")
+    else:
+        stdout.write("edm:object <{accession}/{dirhead}/{object_url}>;\n". \
+                     format(object_url = filtered_list[0].canonical_filepath,\
+                            accession = filtered_list[0].accession,
+                            dirhead = filtered_list[0].dirhead))
+    stdout.write("edm:provider \"University of Chicago Library\";\n")
+    stdout.write("edm:rights <http://creativecommons.org/licenses/by-nc/4.0/>;\n")
+    stdout.write("ore:isDescribedBy <{remurl}>;\n". \
+                 format(remurl = rem_url))
+    stdout.write("a ore:Aggregation.\n\n")
+
+
 def sip_creation(id_parts, file_list, creationdate):
     id_directory = '/'.join(id_parts)
     id_filename = '-'.join(id_parts)
