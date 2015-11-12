@@ -18,67 +18,82 @@ from hashlib import md5, sha256
 from logging import DEBUG, FileHandler, Formatter, getLogger, \
     INFO, StreamHandler
 from os import _exit, stat
-from os.path import exists, relpath
+from os.path import exists, join, relpath
 from re import compile as re_compile, split as re_split
 from sqlalchemy import Table
+from xml.etree import ElementTree as ET
 
 from uchicagoldr.batch import Batch
 from uchicagoldr.database import Database
 from uchicagoldrsips.LDRFileTree import Data
-
-def getTree(generator_data):
-    d = Data(generator_data)
-    d.build()
-    if args.pattern:
-        d.reSortTree(args.pattern)
-    else:
-        pass
-    return d
-
-def getObjects(data,level):
-    from pprint import pprint
-    objects = []
-    objects = data.getNodesAtCertainHeight(data.tree,level)
-    return objects
+from uchicagoldrsips.SIPS import sip_creation
 
 def evaluate_items(b, createdate):
     for n in b.items:
-        header_pat = re_compile('^\d{4}-\d{3}')
+        header_pat = re_compile('^(\d{4}-\d{3})')
         if exists(n.filepath):
             n.root_path = args.root
             accession = n.find_file_accession()
             n.set_accession(accession)
             canonpath = n.find_canonical_filepath()
             if header_pat.search(canonpath):
+                dirheader = header_pat.search(canonpath).group(1)
                 canonpath = '/'.join(canonpath.split('/')[1:])
             else:
+                dirheader = ""
                 canonpath = canonpath
             n.set_canonical_filepath(canonpath)
+            n.dirhead = dirheader
             n.createdate = createdate
             sha256_fixity = n.find_hash_of_file(sha256)
             md5_fixity = n.find_hash_of_file(md5)
             n.checksum = sha256_fixity
-
             mime = n.find_file_mime_type()
             size = n.find_file_size()
+            n.mimetype = mime
             n.filesize = size
             accession = n.find_file_accession()
+            if n.filepath.endswith('.dc.xml'):
+                opened_file = open(n.filepath,'r')
+                xml_doc = ET.parse(opened_file)
+                xml_root = xml_doc.getroot()
+                logger.info(xml_doc)
+                logger.info(xml_root)
+                n.title = xml_root.find('title').text if xml_root.find('title') != None else ""
+                n.description = xml_root.find('description').text \
+                                if xml_root.find('description') != None else ""
+                n.date = xml_root.find('date').text if xml_root.find('date') != None else ""
+                n.identifier = xml_root.find('identifier').text if xml_root.find('identiifer') != None else ""
+            if n.mimetype == 'image/tiff':
+                fits_file_path = join(n.filepath+'.fits.xml')
+                if exists(fits_file_path):
+                    opened_file = open(join(n.filepath+'.fits.xml'),'r')
+                    xml_doc = ET.parse(opened_file)
+                    xml_root = xml_doc.getroot()
+                    md5checksum = xml_root.find("{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}fileinfo/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}md5checksum")
+                    imageheight = xml_root.find("{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}metadata/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}image/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}imageHeight")
+                    imagewidth = xml_root.find("{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}metadata/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}image/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}imageWidth")
+                    bitspersample =  xml_root.find("{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}metadata/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}image/" + \
+                                                "{http://hul.harvard.edu/ois/xml/ns/fits/fits_output}bitsPerSample")
+                    n.imageheight = imageheight.text if imageheight != None else ""
+                    n.imagewidth = imagewidth.text if imagewidth != None else ""
+                    n.bitspersample = bitspersample.text if bitspersample != None else ""
+                    n.mixchecksum = md5checksum.text if md5checksum != None else ""
+                else:
+                    logger.error("no fits.xml file for tiff {filename}". \
+                                 format(filename = n.filepath))
             yield n
         else:
-            logger.error("{path} does not exist on the filesystem".format(path=n.filepath))            
+            logger.error("{path} does not exist on the filesystem". \
+                         format(path=n.filepath))            
 
 def main():
-    def find_group_name(filepath):
-        unix_stat_of_file = stat(fp)
-        grp_id_of_file = unix_stat_of_file.st_gid
-        group_name = getattr(getgrgid(grp_id_of_file), 'gr_name', None)
-        return group_name
-
-    def find_user_name(filepath):
-        uid_of_file = unix_stat_of_file.st_uid
-        user_name = getpwuid(uid_of_file)
-        return user_name
-        
     parser = ArgumentParser(description="{description}". \
                             format(description=__description__),
                             epilog="Copyright University of Chicago; " + \
@@ -165,17 +180,55 @@ def main():
         generated_data = evaluate_items(b,createdate)
         count = 0
         objects = {}
+        file_definers = ['dc.xml','ALTO','TIFF','JPEG','pdf','mets.xml',
+                         '\d{4}.txt']
+        file_definer_sequences = ['ALTO','TIFF','JPEG']
+        page_number_pattern = '_(\w{4})'
         for n in generated_data:
             id_parts = args.pattern.split('/')
             id_parts_enumerated = [x for x in range(args.object_level)]
             id_part_values = [n.canonical_filepath.split('/')[x] \
                               for x in id_parts_enumerated]
             identifier = "-".join(id_part_values)
-            try:
-                objects[identifier].append(n)
-            except KeyError:
-                objects[identifier] = [n]
-        print(objects.keys())
+            to_add = None
+            for p in file_definers:
+                if p in n.canonical_filepath:
+                    to_add = n
+                    break
+            if to_add:
+                if objects.get(identifier):
+                    objects.get(identifier).append(n)
+                else:
+                    objects[identifier] = [n]
+            else:
+                logger.error("{fpath} in {id} could not be matched". \
+                             format(fpath = n.canonical_filepath,
+                                    id = identifier))
+        for k, v in objects.items():
+            for p in file_definer_sequences:
+                sequence = sorted([(int(re_compile(page_number_pattern). \
+                            search(x.canonical_filepath).group(1).lstrip('0')),
+                             x.canonical_filepath) \
+                            for x in v if p in x.canonical_filepath])
+                known_complete_page_range = [x for x in \
+                                             range(sequence[-1][0])][1:]
+                what_is_actually_present  = [x[0] for x in sequence]
+                if set(known_complete_page_range) - \
+                   set(what_is_actually_present):
+                    difference = list(set(known_complete_page_range) - \
+                                      set(what_is_actually_present))
+                    l = [str(x) for x in list(difference)]
+                    logger.error("The sequence part {part} ". \
+                                 format(part = p) + 
+                                 "is missing pages {pages}". \
+                                 format(pages = ','.join(l)))
+            for p in file_definers:
+                seek = [x for x in v if p in x.canonical_filepath]
+                if len(seek) == 0:
+                    logger.error("{identifier}". \
+                                 format(identifier = identifier) + \
+                                " missing part {part}".format(part = p))
+            sip_creation(id_part_values, v, createdate)
         return 0
     except KeyboardInterrupt:
          logger.error("Program aborted manually")

@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(
-    name = 'uchicagoSIPS',
+    name = 'uchicagoldrsips',
     version = '1.0.0',
     author = "Tyler Danstrom",
     author_email = "tdanstrom@uchicago.edu",
