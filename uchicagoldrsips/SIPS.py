@@ -1,16 +1,16 @@
 from os.path import basename, join, splitext
 from sys import stdout, stderr
 
-def make_identifier(id_parts, an_object):
+def make_identifier(id_parts, files):
     id_directory = '/'.join(id_parts)
     id_filename = '-'.join(id_parts)
+
     first_page_representation = join(id_directory, "JPEG", id_filename, "_0001.jpg")
-    first_page_representation in an_object.files
-    return namedtuple("identifier", "directory, filename")  \
-        (id_directory, id_filename)
+    return namedtuple("identifier", "directory, filename first_page")  \
+        (id_directory, id_filename, first_page_representation)
 
 def make_providedcho(identifier, dcfile):
-    subject = identifier.direcotory
+    subject = identifier.directory
     page_urls = ["dcterms:hasPart <" + identifier.directory + \
                  identifier.filename + '_' + ('0'*4-len(str(x)))+str(x)+">" \
                  for x in range(identifier.numpages)]
@@ -34,42 +34,75 @@ def make_providedcho(identifier, dcfile):
 
 def make_aggregation(identifier, pdffile):
     subject = join('aggregation',identifier.directory)
-    
     statements = ["edm:aggregatedCHO <{url}>".format(url = identifier.directory), 
                   "edm:dataProvider \"University of Chicago Library\"",
-                  "edm:isShownAt <http://pi.lib.uchicago.edu/1001/dig/campub/{identifier}".format(identifier = identifier.filename),
-                  "edm:isShownBy <{accession}/{dirhead}/{pdfurl}>".format(accession = pdffile.accession,
-                                                                          dirhead = pdffile.dirhead,
-                                                                          pdfurl = pdffile.canonical_filepath),
-                  "edm:object <{jpegfirstpageurl}>".format(jpegfirstpageurl = jpegfirstpage),
-               ]
+                  "edm:isShownAt <http://pi.lib.uchicago.edu/1001/dig/campub/{identifier}". \
+                  format(identifier = identifier.filename),
+                  "edm:isShownBy <{accession}/{dirhead}/{pdfurl}>". \
+                  format(accession = pdffile.accession,
+                         dirhead = pdffile.dirhead,
+                         pdfurl = pdffile.canonical_filepath),
+                  "edm:object <{jpegfirstpageurl}>". \
+                  format(jpegfirstpageurl = identifier.firstpage_representation),
+                  "edm:provider \"University of Chicago Library\"",
+                  "edm:rights <http://creativecommons.org/licenses/by-nc/4.0/>",
+                  "edm:isDescribedBy <{url}>". \
+                  format(url = join('rem',identifier.directory)) 
+              ]
     object_type = "ore:Aggregation"
-    stdout.write("<{url}>\n".format(url = aggregation_url))
-    stdout.write("edm:aggregatedCHO <{providedchourl}>;\n". \
-                 format(providedchourl = providedcho_url))
-    stdout.write("edm:dataProvider \"University of Chicago Library\";\n")
-    stdout.write("edm:isShownAt <http://pi.lib.uchicago.edu/1001/"+
-        "dig/campub/{identifier}>;\n". \
-                 format(identifier = id_filename))
-    stdout.write("edm:isShownBy <{accession}/{dirhead}/{pdf_url}>;\n". \
-                 format(accession = pdffile.accession,
-                        dirhead = pdffile.dirhead,
-                        pdf_url = pdffile.canonical_filepath))
+    return namedtuple("record", "subject statements object_type") \
+        (subject, statements object_type)
 
+def make_resourcemap(identifier):
+    subject = join('rem',identifier.directory)
+    statements = ["dc:created \"\"\"{creationdate}\"\"\"^^xsd:dateTime". \
+                  format(reationdate = identifier.createdate),
+                  "dcterms:creator <http://repository.lib.uchicago.edu/>",
+                  "ore:describes <{url}>".format(url = join('aggregation', identifier.directory))
+        ]
+    object_type = "ore:ResourceMap"
+    return namedtuple("record" "subject statements object_type") \
+        (subject, statements, object_type)
 
-    filtered_list = [x for x in jpglist if '_0001.jpg' in x.canonical_filepath]
-    if len(filtered_list) == 0:
-        stderr.write("could not find first page jpeg file in file list\n")
-    else:
-        stdout.write("edm:object <{accession}/{dirhead}/{object_url}>;\n". \
-                     format(object_url = filtered_list[0].canonical_filepath,\
-                            accession = filtered_list[0].accession,
-                            dirhead = filtered_list[0].dirhead))
-    stdout.write("edm:provider \"University of Chicago Library\";\n")
-    stdout.write("edm:rights <http://creativecommons.org/licenses/by-nc/4.0/>;\n")
-    stdout.write("ore:isDescribedBy <{remurl}>;\n". \
-                 format(remurl = rem_url))
-    stdout.write("a ore:Aggregation.\n\n")
+def make_proxy(identifier, dcfile):
+    subject = join(dcfile.accession, dcfile.dirhead, dcfile.canonical_filepath)
+    statements = ["dc:format \"{mimetype}\"".format(mimetype = dcfile.mimetype),
+                  "ore:proxyFor <{url}>".format(url = identifier.directory),
+                  "ore:proxyIn <{url}>".format(join('aggregation', identifier.directory))
+              ]
+    object_type = "ore:Proxy"
+    return namedtuple("record","subject statements object_type") \
+        (subject, statements, object_type)
+
+def make_webresource(identifier, pdffile):
+    subject = join(pdffile.accession, pdffile.dirhead, pdffile.canonical_filepath)
+    statements = ["dcterms:isFormatOf \"{mimetype}\"".format(mimetype = pdffile.mimetype),
+                  "dc:format \"{mimetype}\"".format(mimetype = pdffile.mimetype),
+                  "premis:objectIdentifierType \"ARK\"",
+                  "premis:objectIdentifierValue <{url}>".format(url = subject),
+                  "premis:objectCategory \"file\"",
+                  "premis:compositionLevel 0",
+                  "premis:messageDigestAlgorithm \"SHA-256\"",
+                  "premis:messageDigest \"{checksum}\"".format(checksum = pdffile.checksum),
+                  "premis:messageDigestOriginator \"/sbin/sha256\"",
+                  "premis:size {filesize}".format(pdffile.file_size),
+                  "premis:formatName \"{mimetype}\"".format(mimetype = pdffile.mimetype),
+                  "premis:originalName \"{originalName}\"".format(originalName = basename(subject)),
+                  "premis:eventIdentifierType \"ARK\"",
+                  "premis:eventIdentiferValue \"{accession}\"".format(accession = pdffile.accession),
+                  "premis:eventDateTime \"{date}\"".format(date = pdffile.createdate)
+                  ]
+    object_type = "edm:WebResource"
+    return namedtuple("record","subject statements object_type") \
+        (subject, statements, object_type)
+
+def make_rdfs_resource(identifier, resource):
+    subject = join(resource.accession, resource.dirhead, resource.canonical_filepath)
+    statements = ["dc:format \"{mimetype}\"".format(mimetype = resource.mimetype)]
+    object_type = "rdfs:Resource"
+    return namedtuple("record","subject statements object_type") \
+        (subject, statements objec_type)
+
 
 
 def sip_creation(id_parts, file_list, creationdate):
