@@ -5,8 +5,10 @@ def main():
     try:
         print("making sips")
         reader = FileSystemArchiveReader()
-        reader.read("Z:/ar/", "pht0276ghrk0t")
-        print(reader)
+        reader = reader.read("/data/repository/tr/ar/", "pht0276ghrk0t")
+        for n_segment in reader.segment_list:
+            for n_msuite in n_segment.materialsuite_list:
+                print(n_msuite)
         return 0
     except KeyboardInterrupt:
         return 131

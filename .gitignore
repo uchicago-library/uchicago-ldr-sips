@@ -13,3 +13,7 @@ bin/*~
 *~
 env/*
 .DS_Store
+*temp*
+*swp
+*#*
+*__pycache__*

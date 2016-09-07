@@ -18,4 +18,6 @@ setup(
         "Operating System :: Unix",
         "Topic :: Software Development :: Libraries :: Python Modules",
         ],
-    install_requires = ['python-magic == 0.4.6'])
+    install_requires = ['python-magic == 0.4.6',
+                        'SQLAlchemy',
+                        'configobj >= 5.0.6'])
